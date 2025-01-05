@@ -86,49 +86,6 @@ def generate_llama_response(query,context):
 
 
 
-
-# def gradio_interface(repo_url, query):
-#
-#     print(repo_url)
-#     print(query)
-#     return "working"
-#     # readme_content = fetch_readme(repo_url)
-#     # if "Error" not in readme_content:
-#     #     return process_query(readme_content, query)
-#     # else:
-#     #     return readme_content
-#     # return han
-#
-# # Create Gradio interface
-# iface = gr.Interface(
-#     fn=gradio_interface,
-#     inputs=[gr.Textbox(label="GitHub Repo URL"), gr.Textbox(label="Query", lines=2)],
-#     outputs="text",
-#     title="Documentation GPT",
-#     description="Enter a GitHub repository URL and ask questions about its README."
-# )
-#
-# # Launch the Gradio app
-# iface.launch()
-
-
-# if __name__ == "__main__":
-    # url = input("Enter URL: ")
-    #
-    # readme_data = fetch_readme_from_github(url)
-    # text_data = md_to_html_to_text(readme_data)
-    # chunks = text_to_chunks(text_data)
-    #
-    # vectorstore,embeddings = create_vector_db(chunks)
-    #
-    # query = input("Enter query: ")
-    #
-    # context = query_vector_db(vectorstore,embeddings,query)
-    # final_response = generate_llama_response(query,context)
-    #
-    # print(final_response)
-
-
 def handle_submit(url, query, query_state):
 
     query_state["prev_query"] = query
@@ -190,4 +147,4 @@ with gr.Blocks() as demo:
     query_input.change(enable_submit, inputs=[query_input, query_state], outputs=submit_button)
     clear_button.click(clear_fields, outputs=[url_input, query_input, url_input, submit_button])
 
-demo.launch(share=True)
+demo.launch(share=True,server_port=10000)
