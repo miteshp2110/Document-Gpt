@@ -190,4 +190,4 @@ with gr.Blocks() as demo:
     query_input.change(enable_submit, inputs=[query_input, query_state], outputs=submit_button)
     clear_button.click(clear_fields, outputs=[url_input, query_input, url_input, submit_button])
 
-demo.launch()
+demo.launch(share=True)
