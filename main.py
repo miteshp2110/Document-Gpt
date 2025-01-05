@@ -1,9 +1,12 @@
 import requests
 from bs4 import BeautifulSoup
 import markdown
+from ipykernel.pickleutil import interactive
 from ollama import chat
 from langchain_ollama import OllamaEmbeddings
 from langchain_core.vectorstores import InMemoryVectorStore
+import gradio as gr
+from sympy.physics.units import current
 
 
 def fetch_readme_from_github(url, attempts=1):
@@ -58,7 +61,7 @@ def create_vector_db(chunks,model="llama3"):
 def query_vector_db(vectorstore, embeddings, query):
     query_embedding = embeddings.embed_query(query)
 
-    results = vectorstore.similarity_search_by_vector(query_embedding, k=5)
+    results = vectorstore.similarity_search_by_vector(query_embedding, k=10)
 
     query_result = ""
     for result in results:
@@ -73,8 +76,9 @@ def generate_llama_response(query,context):
 
     return response.message.content
 
-if __name__ == "__main__":
-    url = input("Enter URL: ")
+currentUrl = ""
+currentQuery= ""
+def handle_request(url,query):
 
     readme_data = fetch_readme_from_github(url)
     text_data = md_to_html_to_text(readme_data)
@@ -82,9 +86,99 @@ if __name__ == "__main__":
 
     vectorstore,embeddings = create_vector_db(chunks)
 
-    query = input("Enter query: ")
-
     context = query_vector_db(vectorstore,embeddings,query)
     final_response = generate_llama_response(query,context)
 
     print(final_response)
+
+
+# def gradio_interface(repo_url, query):
+#
+#     print(repo_url)
+#     print(query)
+#     return "working"
+#     # readme_content = fetch_readme(repo_url)
+#     # if "Error" not in readme_content:
+#     #     return process_query(readme_content, query)
+#     # else:
+#     #     return readme_content
+#     # return han
+#
+# # Create Gradio interface
+# iface = gr.Interface(
+#     fn=gradio_interface,
+#     inputs=[gr.Textbox(label="GitHub Repo URL"), gr.Textbox(label="Query", lines=2)],
+#     outputs="text",
+#     title="Documentation GPT",
+#     description="Enter a GitHub repository URL and ask questions about its README."
+# )
+#
+# # Launch the Gradio app
+# iface.launch()
+
+
+# if __name__ == "__main__":
+    # url = input("Enter URL: ")
+    #
+    # readme_data = fetch_readme_from_github(url)
+    # text_data = md_to_html_to_text(readme_data)
+    # chunks = text_to_chunks(text_data)
+    #
+    # vectorstore,embeddings = create_vector_db(chunks)
+    #
+    # query = input("Enter query: ")
+    #
+    # context = query_vector_db(vectorstore,embeddings,query)
+    # final_response = generate_llama_response(query,context)
+    #
+    # print(final_response)
+
+
+def handle_submit(url, query, query_state):
+
+    query_state["prev_query"] = query
+    if not query or not url:
+        return "provide a query and repo url",gr.update(interactive=False)
+
+    readme_data = fetch_readme_from_github(url)
+    text_data = md_to_html_to_text(readme_data)
+    chunks = text_to_chunks(text_data)
+
+    vectorstore,embeddings = create_vector_db(chunks)
+
+
+    context = query_vector_db(vectorstore,embeddings,query)
+    final_response = generate_llama_response(query,context)
+
+
+    return final_response, gr.update(interactive=False)
+
+
+def enable_submit(query, query_state):
+
+    return gr.update(interactive=(query != query_state.get("prev_query", "")))
+
+
+def clear_fields():
+
+    return "", "", gr.update(interactive=True), gr.update(interactive=False)
+
+
+# Define Gradio components and interface
+with gr.Blocks() as demo:
+    query_state = gr.State({"prev_query": ""})
+
+    with gr.Row():
+        url_input = gr.Textbox(label="GitHub Repo URL")
+        query_input = gr.Textbox(label="Query", lines=2)
+
+    submit_button = gr.Button("Submit")
+    clear_button = gr.Button("Clear")
+
+    output = gr.Textbox(label="Output")
+
+    submit_button.click(handle_submit, inputs=[url_input, query_input, query_state], outputs=[output, url_input])
+    query_input.change(enable_submit, inputs=[query_input, query_state], outputs=submit_button)
+    clear_button.click(clear_fields, outputs=[url_input, query_input, url_input, submit_button])
+
+demo.launch()
