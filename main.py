@@ -1,12 +1,20 @@
 import requests
 from bs4 import BeautifulSoup
 import markdown
-from ipykernel.pickleutil import interactive
+from dotenv import load_dotenv
 from ollama import chat
 from langchain_ollama import OllamaEmbeddings
 from langchain_core.vectorstores import InMemoryVectorStore
 import gradio as gr
-from sympy.physics.units import current
+import os
+from groq import Groq
+
+load_dotenv()
+
+client = Groq(
+    api_key=os.environ.get("API_KEY"),
+)
+
 
 
 def fetch_readme_from_github(url, attempts=1):
@@ -76,20 +84,7 @@ def generate_llama_response(query,context):
 
     return response.message.content
 
-currentUrl = ""
-currentQuery= ""
-def handle_request(url,query):
 
-    readme_data = fetch_readme_from_github(url)
-    text_data = md_to_html_to_text(readme_data)
-    chunks = text_to_chunks(text_data)
-
-    vectorstore,embeddings = create_vector_db(chunks)
-
-    context = query_vector_db(vectorstore,embeddings,query)
-    final_response = generate_llama_response(query,context)
-
-    print(final_response)
 
 
 # def gradio_interface(repo_url, query):
@@ -148,7 +143,21 @@ def handle_submit(url, query, query_state):
 
 
     context = query_vector_db(vectorstore,embeddings,query)
-    final_response = generate_llama_response(query,context)
+
+    prompt = context + "\n\n" + query
+
+    chat_completion = client.chat.completions.create(
+        messages=[
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ],
+        model="llama-3.3-70b-versatile"
+    )
+
+    # final_response = generate_llama_response(query,context)
+    final_response = chat_completion.choices[0].message.content
 
 
     return final_response, gr.update(interactive=False)
