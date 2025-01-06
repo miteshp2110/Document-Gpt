@@ -1,3 +1,5 @@
+from datetime import time
+
 import requests
 from bs4 import BeautifulSoup
 import markdown
@@ -8,13 +10,16 @@ from langchain_core.vectorstores import InMemoryVectorStore
 import gradio as gr
 import os
 from groq import Groq
+from pinecone import Pinecone, ServerlessSpec
+load_dotenv()
+api_key= os.environ.get('API_KEY')
+pc = Pinecone(api_key=api_key)
 
 load_dotenv()
 
 client = Groq(
-    api_key=os.environ.get("API_KEY"),
+    api_key=os.environ.get("API_KEY2"),
 )
-
 
 
 def fetch_readme_from_github(url, attempts=1):
@@ -56,6 +61,86 @@ def text_to_chunks(text,chunk_size=200):
         chunks.append(" ".join(chunk))
     return chunks
 
+def chunks_to_object(chunks):
+    nam = "vec"
+    data = []
+    for i in range (0,len(chunks)):
+        obj = {"id":f"{nam}{i+1}","text":chunks[i]}
+        i+=1
+        data.append(obj)
+    return data
+
+def pine_db(data):
+    index_name = "documentation"
+
+    # pc.create_index(
+    #     name=index_name,
+    #     dimension=1024,
+    #     metric="cosine",
+    #     spec=ServerlessSpec(
+    #         cloud="aws",
+    #         region="us-east-1"
+    #     )
+    # )
+    embeddings = pc.inference.embed(
+        model="multilingual-e5-large",
+        inputs=[d['text'] for d in data],
+        parameters={"input_type": "passage", "truncate": "END"}
+    )
+    # print(embeddings[0])
+
+    while not pc.describe_index(index_name).status['ready']:
+        time.sleep(1)
+
+    index = pc.Index(index_name)
+
+    vectors = []
+    for d, e in zip(data, embeddings):
+        vectors.append({
+            "id": d['id'],
+            "values": e['values'],
+            "metadata": {'text': d['text']}
+        })
+
+    # print(vectors)
+
+    index.upsert(
+        vectors=vectors,
+        namespace="ns2"
+    )
+    # print(index.describe_index_stats())
+    return index
+
+def query_pine(index,query):
+
+    embedding = pc.inference.embed(
+        model="multilingual-e5-large",
+        inputs=[query],
+        parameters={
+            "input_type": "query"
+        }
+    )
+    results = index.query(
+        namespace="ns2",
+        vector=embedding[0].values,
+        top_k=4,
+        include_values=False,
+        include_metadata=True
+    )
+
+    # print(results)
+    res_array = results.matches
+    fin=[]
+    for res in res_array:
+        fin.append(res.metadata['text'])
+
+
+    finl = ""
+    for f in fin:
+        finl += f
+        finl += "\n"
+    return finl
+
 
 def create_vector_db(chunks,model="llama3"):
     embeddings = OllamaEmbeddings(model=model)
@@ -96,12 +181,16 @@ def handle_submit(url, query, query_state):
     text_data = md_to_html_to_text(readme_data)
     chunks = text_to_chunks(text_data)
 
-    vectorstore,embeddings = create_vector_db(chunks)
+    data = chunks_to_object(chunks)
+    index=pine_db(data)
+    res_pine=query_pine(index,query)
+
+    # vectorstore,embeddings = create_vector_db(chunks)
 
 
-    context = query_vector_db(vectorstore,embeddings,query)
+    # context = query_vector_db(vectorstore,embeddings,query)
 
-    prompt = context + "\n\n" + query
+    prompt = res_pine + "\n\n" + query
 
     chat_completion = client.chat.completions.create(
         messages=[
@@ -113,7 +202,8 @@ def handle_submit(url, query, query_state):
         model="llama-3.3-70b-versatile"
     )
 
-    # final_response = generate_llama_response(query,context)
+
+    # final_response = generate_llama_response(query,prompt)
     final_response = chat_completion.choices[0].message.content
 
 
@@ -147,4 +237,4 @@ with gr.Blocks() as demo:
     query_input.change(enable_submit, inputs=[query_input, query_state], outputs=submit_button)
     clear_button.click(clear_fields, outputs=[url_input, query_input, url_input, submit_button])
 
-demo.launch(share=True,server_port=10000)
+demo.launch()
